@@ -138,6 +138,19 @@ extern "C" int mlx_fast_custom_kernel_config_add_template_arg_int(
   }
   return 0;
 }
+extern "C" int mlx_fast_custom_kernel_config_add_template_arg_uint32(
+    mlx_fast_custom_kernel_config cls,
+    const char* name,
+    uint32_t value) {
+  try {
+    mlx_fast_custom_kernel_config_get_(cls).template_args.push_back(
+        std::make_pair(std::string(name), value));
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return 1;
+  }
+  return 0;
+}
 extern "C" int mlx_fast_custom_kernel_config_add_template_arg_bool(
     mlx_fast_custom_kernel_config cls,
     const char* name,
@@ -243,6 +256,10 @@ int mlx_fast_custom_kernel_config_add_template_arg_int(
     mlx_fast_custom_kernel_config cls,
     const char* name,
     int value);
+int mlx_fast_custom_kernel_config_add_template_arg_uint32(
+    mlx_fast_custom_kernel_config cls,
+    const char* name,
+    uint32_t value);
 int mlx_fast_custom_kernel_config_add_template_arg_bool(
     mlx_fast_custom_kernel_config cls,
     const char* name,
