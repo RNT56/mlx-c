@@ -6,7 +6,50 @@
 #include "mlx/c/fast.h"
 #include "mlx/c/error.h"
 #include "mlx/c/private/mlx.h"
+#include "mlx/array.h"
 #include "mlx/fast.h"
+
+#include <atomic>
+#include <chrono>
+#include <cstring>
+#include <fstream>
+#include <limits>
+#include <mutex>
+#include <stdexcept>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+#include <json.hpp>
+
+#if !defined(_WIN32)
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+
+namespace mlx::core {
+void prefault(const array& a) {
+  if (!a.data_shared_ptr()) {
+    return;
+  }
+
+  const auto* ptr = static_cast<const uint8_t*>(
+      const_cast<allocator::Buffer&>(a.buffer()).raw_ptr());
+  if (!ptr) {
+    return;
+  }
+
+  volatile uint8_t tmp = 0;
+  size_t size = a.buffer_size();
+  for (size_t i = 0; i < size; i += 16384) {
+    tmp = static_cast<uint8_t>(tmp + ptr[i]);
+  }
+
+  if (size > 0) {
+    tmp = static_cast<uint8_t>(tmp + ptr[size - 1]);
+  }
+}
+} // namespace mlx::core
 
 struct mlx_fast_cuda_kernel_config_cpp_ {
   std::vector<mlx::core::Shape> output_shapes;
@@ -656,4 +699,278 @@ extern "C" int mlx_fast_scaled_dot_product_attention(
     return 1;
   }
   return 0;
+}
+
+namespace {
+
+using Clock = std::chrono::steady_clock;
+
+struct SSDMetricsState {
+  std::atomic<uint64_t> total_bytes_read{0};
+  std::atomic<uint64_t> total_chunks{0};
+  std::atomic<uint64_t> total_latency_ns{0};
+  std::mutex window_mutex;
+  Clock::time_point window_start = Clock::now();
+  uint64_t window_bytes = 0;
+  double throughput_mb_per_s = 0.0;
+};
+
+SSDMetricsState& ssd_metrics_state() {
+  static SSDMetricsState state;
+  return state;
+}
+
+void record_ssd_read(size_t bytes, Clock::duration latency) {
+  auto& state = ssd_metrics_state();
+  state.total_bytes_read.fetch_add(bytes, std::memory_order_relaxed);
+  state.total_chunks.fetch_add(1, std::memory_order_relaxed);
+  state.total_latency_ns.fetch_add(
+      static_cast<uint64_t>(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(latency)
+              .count()),
+      std::memory_order_relaxed);
+
+  std::lock_guard<std::mutex> lock(state.window_mutex);
+  state.window_bytes += bytes;
+  auto now = Clock::now();
+  auto elapsed = now - state.window_start;
+  if (elapsed >= std::chrono::seconds(10)) {
+    double seconds = std::chrono::duration<double>(elapsed).count();
+    state.throughput_mb_per_s =
+        seconds > 0.0
+            ? (static_cast<double>(state.window_bytes) / (1024.0 * 1024.0)) /
+                  seconds
+            : 0.0;
+    state.window_bytes = 0;
+    state.window_start = now;
+  }
+}
+
+struct SafetensorsPReadEntry {
+  int fd = -1;
+  size_t data_start = 0;
+  size_t bytes_per_expert = 0;
+  size_t expert_count = 0;
+};
+
+std::mutex safetensors_pread_cache_mutex;
+std::unordered_map<std::string, SafetensorsPReadEntry> safetensors_pread_cache;
+
+SafetensorsPReadEntry get_safetensors_pread_entry(
+    const std::string& path,
+    const std::string& tensor_name) {
+#if defined(_WIN32)
+  throw std::runtime_error("safetensors pread is unsupported on this platform");
+#else
+  std::string key = path + "|" + tensor_name;
+  std::lock_guard<std::mutex> lock(safetensors_pread_cache_mutex);
+  auto it = safetensors_pread_cache.find(key);
+  if (it != safetensors_pread_cache.end()) {
+    return it->second;
+  }
+
+  int fd = open(path.c_str(), O_RDONLY);
+  if (fd < 0) {
+    throw std::runtime_error("[pread_into] cannot open: " + path);
+  }
+
+  auto close_on_error = [&fd]() {
+    if (fd >= 0) {
+      close(fd);
+      fd = -1;
+    }
+  };
+
+  uint64_t header_length = 0;
+  if (pread(fd, &header_length, sizeof(header_length), 0) !=
+      static_cast<ssize_t>(sizeof(header_length))) {
+    close_on_error();
+    throw std::runtime_error("[pread_into] cannot read safetensors header length");
+  }
+
+  std::vector<char> header(header_length);
+  if (static_cast<uint64_t>(pread(fd, header.data(), header.size(), 8)) !=
+      header_length) {
+    close_on_error();
+    throw std::runtime_error("[pread_into] cannot read safetensors header JSON");
+  }
+
+  auto json = nlohmann::json::parse(header.begin(), header.end());
+  auto tensor = json.find(tensor_name);
+  if (tensor == json.end()) {
+    close_on_error();
+    throw std::runtime_error("[pread_into] tensor not found: " + tensor_name);
+  }
+
+  auto shape = tensor->at("shape").get<std::vector<size_t>>();
+  auto offsets = tensor->at("data_offsets").get<std::vector<size_t>>();
+  if (shape.empty()) {
+    close_on_error();
+    throw std::runtime_error("[pread_into] tensor has no expert dimension: " +
+                             tensor_name);
+  }
+  if (offsets.size() != 2 || offsets[1] < offsets[0]) {
+    close_on_error();
+    throw std::runtime_error("[pread_into] invalid data_offsets for tensor: " +
+                             tensor_name);
+  }
+
+  size_t expert_count = shape[0];
+  size_t total_bytes = offsets[1] - offsets[0];
+  if (expert_count == 0 || total_bytes % expert_count != 0) {
+    close_on_error();
+    throw std::runtime_error("[pread_into] tensor bytes are not evenly split by experts: " +
+                             tensor_name);
+  }
+
+  SafetensorsPReadEntry entry{
+      fd,
+      static_cast<size_t>(8 + header_length + offsets[0]),
+      total_bytes / expert_count,
+      expert_count};
+  safetensors_pread_cache[key] = entry;
+  return entry;
+#endif
+}
+
+void pread_exact(int fd, void* dst, size_t length, size_t offset) {
+#if defined(_WIN32)
+  throw std::runtime_error("pread is unsupported on this platform");
+#else
+  if (length > static_cast<size_t>(std::numeric_limits<ssize_t>::max())) {
+    throw std::runtime_error("[pread_into] read length exceeds ssize_t max");
+  }
+  ssize_t result = pread(fd, dst, length, static_cast<off_t>(offset));
+  if (result < 0 || static_cast<size_t>(result) != length) {
+    throw std::runtime_error(
+        "[pread_into] pread failed: got " + std::to_string(result) + " of " +
+        std::to_string(length));
+  }
+#endif
+}
+
+} // namespace
+
+extern "C" int mlx_fast_prefault(mlx_array x) {
+  try {
+    mlx::core::prefault(mlx_array_get_(x));
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return 1;
+  }
+  return 0;
+}
+
+extern "C" int mlx_fast_pread_into(
+    mlx_array dst,
+    const char* safetensors_path,
+    const char* tensor_name,
+    uint32_t expert_index) {
+  try {
+    if (!safetensors_path || !tensor_name) {
+      throw std::runtime_error("[pread_into] safetensors path and tensor name are required");
+    }
+
+    auto entry = get_safetensors_pread_entry(safetensors_path, tensor_name);
+    if (expert_index >= entry.expert_count) {
+      throw std::runtime_error("[pread_into] expert index out of bounds");
+    }
+
+    auto& arr = mlx_array_get_(dst);
+    void* buffer = arr.data<uint8_t>();
+    if (!buffer) {
+      throw std::runtime_error("[pread_into] dst has no data pointer; evaluate it first");
+    }
+
+    size_t dst_bytes = arr.nbytes();
+    if (dst_bytes != entry.bytes_per_expert) {
+      throw std::runtime_error(
+          "[pread_into] dst.nbytes (" + std::to_string(dst_bytes) +
+          ") must equal bytes_per_expert (" +
+          std::to_string(entry.bytes_per_expert) + ")");
+    }
+
+    size_t file_offset =
+        entry.data_start + static_cast<size_t>(expert_index) * entry.bytes_per_expert;
+    auto start = Clock::now();
+    pread_exact(entry.fd, buffer, dst_bytes, file_offset);
+    record_ssd_read(dst_bytes, Clock::now() - start);
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return 1;
+  }
+  return 0;
+}
+
+extern "C" int mlx_fast_pread_into_offset(
+    mlx_array dst,
+    const char* safetensors_path,
+    const char* tensor_name,
+    uint32_t expert_index,
+    size_t dst_offset) {
+  try {
+    if (!safetensors_path || !tensor_name) {
+      throw std::runtime_error(
+          "[pread_into_offset] safetensors path and tensor name are required");
+    }
+
+    auto entry = get_safetensors_pread_entry(safetensors_path, tensor_name);
+    if (expert_index >= entry.expert_count) {
+      throw std::runtime_error("[pread_into_offset] expert index out of bounds");
+    }
+
+    auto& arr = mlx_array_get_(dst);
+    auto* base = arr.data<uint8_t>();
+    if (!base) {
+      throw std::runtime_error(
+          "[pread_into_offset] dst has no data pointer; evaluate it first");
+    }
+
+    size_t dst_bytes = arr.nbytes();
+    if (dst_offset > dst_bytes ||
+        entry.bytes_per_expert > dst_bytes - dst_offset) {
+      throw std::runtime_error(
+          "[pread_into_offset] dst_offset (" + std::to_string(dst_offset) +
+          ") + bytes_per_expert (" +
+          std::to_string(entry.bytes_per_expert) + ") exceeds dst.nbytes (" +
+          std::to_string(dst_bytes) + ")");
+    }
+
+    size_t file_offset =
+        entry.data_start + static_cast<size_t>(expert_index) * entry.bytes_per_expert;
+    auto start = Clock::now();
+    pread_exact(
+        entry.fd,
+        static_cast<void*>(base + dst_offset),
+        entry.bytes_per_expert,
+        file_offset);
+    record_ssd_read(entry.bytes_per_expert, Clock::now() - start);
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return 1;
+  }
+  return 0;
+}
+
+extern "C" void mlx_ssd_metrics_snapshot(MlxSSDMetricsSnapshot* out) {
+  if (!out) {
+    return;
+  }
+
+  auto& state = ssd_metrics_state();
+  uint64_t chunks = state.total_chunks.load(std::memory_order_relaxed);
+  uint64_t latency_ns = state.total_latency_ns.load(std::memory_order_relaxed);
+  double throughput = 0.0;
+  {
+    std::lock_guard<std::mutex> lock(state.window_mutex);
+    throughput = state.throughput_mb_per_s;
+  }
+
+  out->throughput_mb_per_s = throughput;
+  out->total_bytes_read = state.total_bytes_read.load(std::memory_order_relaxed);
+  out->total_chunks = chunks;
+  out->avg_chunk_latency_ms =
+      chunks > 0 ? (static_cast<double>(latency_ns) / 1'000'000.0) /
+                       static_cast<double>(chunks)
+                 : 0.0;
 }
