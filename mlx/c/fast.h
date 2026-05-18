@@ -63,6 +63,10 @@ int mlx_fast_cuda_kernel_config_add_template_arg_int(
     mlx_fast_cuda_kernel_config cls,
     const char* name,
     int value);
+int mlx_fast_cuda_kernel_config_add_template_arg_uint32(
+    mlx_fast_cuda_kernel_config cls,
+    const char* name,
+    uint32_t value);
 int mlx_fast_cuda_kernel_config_add_template_arg_bool(
     mlx_fast_cuda_kernel_config cls,
     const char* name,
@@ -133,6 +137,10 @@ int mlx_fast_metal_kernel_config_add_template_arg_int(
     mlx_fast_metal_kernel_config cls,
     const char* name,
     int value);
+int mlx_fast_metal_kernel_config_add_template_arg_uint32(
+    mlx_fast_metal_kernel_config cls,
+    const char* name,
+    uint32_t value);
 int mlx_fast_metal_kernel_config_add_template_arg_bool(
     mlx_fast_metal_kernel_config cls,
     const char* name,
@@ -197,7 +205,31 @@ int mlx_fast_scaled_dot_product_attention(
     const mlx_array sinks /* may be null */,
     const mlx_stream s);
 
+int mlx_fast_prefault(mlx_array x);
+
+int mlx_fast_pread_into(
+    mlx_array dst,
+    const char* safetensors_path,
+    const char* tensor_name,
+    uint32_t expert_index);
+
+int mlx_fast_pread_into_offset(
+    mlx_array dst,
+    const char* safetensors_path,
+    const char* tensor_name,
+    uint32_t expert_index,
+    size_t dst_offset);
+
 /**@}*/
+
+typedef struct MlxSSDMetricsSnapshot {
+  double throughput_mb_per_s;
+  uint64_t total_bytes_read;
+  uint64_t total_chunks;
+  double avg_chunk_latency_ms;
+} MlxSSDMetricsSnapshot;
+
+void mlx_ssd_metrics_snapshot(MlxSSDMetricsSnapshot* out);
 
 #ifdef __cplusplus
 }
