@@ -700,6 +700,54 @@ extern "C" int mlx_fast_scaled_dot_product_attention(
   }
   return 0;
 }
+extern "C" int mlx_fast_quantized_scaled_dot_product_attention(
+    mlx_array* res,
+    const mlx_array queries,
+    const mlx_array keys,
+    const mlx_array key_scales,
+    const mlx_array key_biases /* may be null */,
+    const mlx_array values,
+    const mlx_array value_scales,
+    const mlx_array value_biases /* may be null */,
+    float scale,
+    const mlx_array mask /* may be null */,
+    const mlx_array sinks /* may be null */,
+    mlx_optional_int group_size,
+    mlx_optional_int bits,
+    const char* mode,
+    bool causal,
+    const mlx_stream s) {
+  try {
+    mlx_array_set_(
+        *res,
+        mlx::core::fast::quantized_scaled_dot_product_attention(
+            mlx_array_get_(queries),
+            mlx_array_get_(keys),
+            mlx_array_get_(key_scales),
+            (key_biases.ctx ? std::make_optional(mlx_array_get_(key_biases))
+                            : std::nullopt),
+            mlx_array_get_(values),
+            mlx_array_get_(value_scales),
+            (value_biases.ctx ? std::make_optional(mlx_array_get_(value_biases))
+                              : std::nullopt),
+            scale,
+            (mask.ctx ? std::make_optional(mlx_array_get_(mask))
+                      : std::nullopt),
+            (sinks.ctx ? std::make_optional(mlx_array_get_(sinks))
+                       : std::nullopt),
+            (group_size.has_value ? std::make_optional<int>(group_size.value)
+                                  : std::nullopt),
+            (bits.has_value ? std::make_optional<int>(bits.value)
+                            : std::nullopt),
+            std::string(mode),
+            causal,
+            mlx_stream_get_(s)));
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return 1;
+  }
+  return 0;
+}
 
 namespace {
 
