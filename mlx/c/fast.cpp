@@ -13,7 +13,6 @@
 #include <chrono>
 #include <cstring>
 #include <fstream>
-#include <limits>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -192,12 +191,8 @@ extern "C" int mlx_fast_cuda_kernel_config_add_template_arg_uint32(
     const char* name,
     uint32_t value) {
   try {
-    if (value > static_cast<uint32_t>(std::numeric_limits<int>::max())) {
-      throw std::invalid_argument(
-          "uint32 template argument exceeds the linked MLX TemplateArg int range");
-    }
     mlx_fast_cuda_kernel_config_get_(cls).template_args.push_back(
-        std::make_pair(std::string(name), static_cast<int>(value)));
+        std::make_pair(std::string(name), value));
   } catch (std::exception& e) {
     mlx_error(e.what());
     return 1;
@@ -478,12 +473,8 @@ extern "C" int mlx_fast_metal_kernel_config_add_template_arg_uint32(
     const char* name,
     uint32_t value) {
   try {
-    if (value > static_cast<uint32_t>(std::numeric_limits<int>::max())) {
-      throw std::invalid_argument(
-          "uint32 template argument exceeds the linked MLX TemplateArg int range");
-    }
     mlx_fast_metal_kernel_config_get_(cls).template_args.push_back(
-        std::make_pair(std::string(name), static_cast<int>(value)));
+        std::make_pair(std::string(name), value));
   } catch (std::exception& e) {
     mlx_error(e.what());
     return 1;
