@@ -154,6 +154,12 @@ Error Management
 Most of MLX operations return an ``int`` value, which will be zero if the
 operation was successful, or non-zero if some error occurred.
 
+New APIs that need to distinguish unsupported backends from other failures may
+return :class:`mlx_status` instead. ``MLX_STATUS_SUCCESS`` means the operation
+completed, ``MLX_STATUS_ERROR`` means a regular MLX or argument error occurred,
+and ``MLX_STATUS_UNSUPPORTED`` means the requested backend or backend operation
+is not available in the current build or runtime configuration.
+
 However, by default, the program will exit when an error occurs: each time
 an error is encountered, the MLX C :doc:`error handler <error>` is called,
 and the default error handler will simply print out the error, then exit.
@@ -165,3 +171,17 @@ this function will also reset the error handler to the default one.
 That way, one may install a no-op error handler and then check each
 function return value by hand, or adapt the error handler to an appropriate
 behavior when embedding MLX C in another language.
+
+Distributed Ownership and Errors
+================================
+
+Distributed functions follow the same ownership rules as other MLX C objects:
+callers create result handles with functions such as
+:func:`mlx_array_new()` or :func:`mlx_distributed_group_new()`, pass pointers to
+those handles as output arguments, and release every owned handle exactly once
+with the matching ``free`` function. Passing ``NULL`` for an optional
+``mlx_distributed_group`` argument selects the global distributed group.
+
+The distributed wrappers return :class:`mlx_status`. They preserve the error
+handler behavior above, so embedders that want explicit status handling should
+install a non-terminating error handler before calling unavailable backends.

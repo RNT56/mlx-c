@@ -8,7 +8,7 @@
 #include "mlx/c/private/mlx.h"
 #include "mlx/distributed/ops.h"
 
-extern "C" int mlx_distributed_all_gather(
+extern "C" mlx_status mlx_distributed_all_gather(
     mlx_array* res,
     const mlx_array x,
     const mlx_distributed_group group /* may be null */,
@@ -21,13 +21,16 @@ extern "C" int mlx_distributed_all_gather(
             (group.ctx ? std::make_optional(mlx_distributed_group_get_(group))
                        : std::nullopt),
             mlx_stream_get_(S)));
+  } catch (mlx::core::distributed::UnsupportedBackendError& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
   } catch (std::exception& e) {
     mlx_error(e.what());
-    return 1;
+    return MLX_STATUS_ERROR;
   }
-  return 0;
+  return MLX_STATUS_SUCCESS;
 }
-extern "C" int mlx_distributed_all_max(
+extern "C" mlx_status mlx_distributed_all_max(
     mlx_array* res,
     const mlx_array x,
     const mlx_distributed_group group /* may be null */,
@@ -40,13 +43,16 @@ extern "C" int mlx_distributed_all_max(
             (group.ctx ? std::make_optional(mlx_distributed_group_get_(group))
                        : std::nullopt),
             mlx_stream_get_(s)));
+  } catch (mlx::core::distributed::UnsupportedBackendError& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
   } catch (std::exception& e) {
     mlx_error(e.what());
-    return 1;
+    return MLX_STATUS_ERROR;
   }
-  return 0;
+  return MLX_STATUS_SUCCESS;
 }
-extern "C" int mlx_distributed_all_min(
+extern "C" mlx_status mlx_distributed_all_min(
     mlx_array* res,
     const mlx_array x,
     const mlx_distributed_group group /* may be null */,
@@ -59,13 +65,16 @@ extern "C" int mlx_distributed_all_min(
             (group.ctx ? std::make_optional(mlx_distributed_group_get_(group))
                        : std::nullopt),
             mlx_stream_get_(s)));
+  } catch (mlx::core::distributed::UnsupportedBackendError& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
   } catch (std::exception& e) {
     mlx_error(e.what());
-    return 1;
+    return MLX_STATUS_ERROR;
   }
-  return 0;
+  return MLX_STATUS_SUCCESS;
 }
-extern "C" int mlx_distributed_all_sum(
+extern "C" mlx_status mlx_distributed_all_sum(
     mlx_array* res,
     const mlx_array x,
     const mlx_distributed_group group /* may be null */,
@@ -78,13 +87,16 @@ extern "C" int mlx_distributed_all_sum(
             (group.ctx ? std::make_optional(mlx_distributed_group_get_(group))
                        : std::nullopt),
             mlx_stream_get_(s)));
+  } catch (mlx::core::distributed::UnsupportedBackendError& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
   } catch (std::exception& e) {
     mlx_error(e.what());
-    return 1;
+    return MLX_STATUS_ERROR;
   }
-  return 0;
+  return MLX_STATUS_SUCCESS;
 }
-extern "C" int mlx_distributed_recv(
+extern "C" mlx_status mlx_distributed_recv(
     mlx_array* res,
     const int* shape,
     size_t shape_num,
@@ -102,13 +114,16 @@ extern "C" int mlx_distributed_recv(
             (group.ctx ? std::make_optional(mlx_distributed_group_get_(group))
                        : std::nullopt),
             mlx_stream_get_(s)));
+  } catch (mlx::core::distributed::UnsupportedBackendError& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
   } catch (std::exception& e) {
     mlx_error(e.what());
-    return 1;
+    return MLX_STATUS_ERROR;
   }
-  return 0;
+  return MLX_STATUS_SUCCESS;
 }
-extern "C" int mlx_distributed_recv_like(
+extern "C" mlx_status mlx_distributed_recv_like(
     mlx_array* res,
     const mlx_array x,
     int src,
@@ -123,13 +138,16 @@ extern "C" int mlx_distributed_recv_like(
             (group.ctx ? std::make_optional(mlx_distributed_group_get_(group))
                        : std::nullopt),
             mlx_stream_get_(s)));
+  } catch (mlx::core::distributed::UnsupportedBackendError& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
   } catch (std::exception& e) {
     mlx_error(e.what());
-    return 1;
+    return MLX_STATUS_ERROR;
   }
-  return 0;
+  return MLX_STATUS_SUCCESS;
 }
-extern "C" int mlx_distributed_send(
+extern "C" mlx_status mlx_distributed_send(
     mlx_array* res,
     const mlx_array x,
     int dst,
@@ -144,13 +162,16 @@ extern "C" int mlx_distributed_send(
             (group.ctx ? std::make_optional(mlx_distributed_group_get_(group))
                        : std::nullopt),
             mlx_stream_get_(s)));
+  } catch (mlx::core::distributed::UnsupportedBackendError& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
   } catch (std::exception& e) {
     mlx_error(e.what());
-    return 1;
+    return MLX_STATUS_ERROR;
   }
-  return 0;
+  return MLX_STATUS_SUCCESS;
 }
-extern "C" int mlx_distributed_sum_scatter(
+extern "C" mlx_status mlx_distributed_sum_scatter(
     mlx_array* res,
     const mlx_array x,
     const mlx_distributed_group group /* may be null */,
@@ -163,9 +184,12 @@ extern "C" int mlx_distributed_sum_scatter(
             (group.ctx ? std::make_optional(mlx_distributed_group_get_(group))
                        : std::nullopt),
             mlx_stream_get_(s)));
+  } catch (mlx::core::distributed::UnsupportedBackendError& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
   } catch (std::exception& e) {
     mlx_error(e.what());
-    return 1;
+    return MLX_STATUS_ERROR;
   }
-  return 0;
+  return MLX_STATUS_SUCCESS;
 }
