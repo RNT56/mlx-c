@@ -716,25 +716,36 @@ extern "C" int mlx_fast_quantized_scaled_dot_product_attention(
     const char* mode,
     bool causal,
     const mlx_stream s) {
-  (void)res;
-  (void)queries;
-  (void)keys;
-  (void)key_scales;
-  (void)key_biases;
-  (void)values;
-  (void)value_scales;
-  (void)value_biases;
-  (void)scale;
-  (void)mask;
-  (void)sinks;
-  (void)group_size;
-  (void)bits;
-  (void)mode;
-  (void)causal;
-  (void)s;
-  mlx_error(
-      "mlx_fast_quantized_scaled_dot_product_attention is unavailable in the linked MLX runtime");
-  return 1;
+  try {
+    mlx_array_set_(
+        *res,
+        mlx::core::fast::quantized_scaled_dot_product_attention(
+            mlx_array_get_(queries),
+            mlx_array_get_(keys),
+            mlx_array_get_(key_scales),
+            (key_biases.ctx ? std::make_optional(mlx_array_get_(key_biases))
+                            : std::nullopt),
+            mlx_array_get_(values),
+            mlx_array_get_(value_scales),
+            (value_biases.ctx ? std::make_optional(mlx_array_get_(value_biases))
+                              : std::nullopt),
+            scale,
+            (mask.ctx ? std::make_optional(mlx_array_get_(mask))
+                      : std::nullopt),
+            (sinks.ctx ? std::make_optional(mlx_array_get_(sinks))
+                       : std::nullopt),
+            (group_size.has_value ? std::make_optional<int>(group_size.value)
+                                  : std::nullopt),
+            (bits.has_value ? std::make_optional<int>(bits.value)
+                            : std::nullopt),
+            std::string(mode),
+            causal,
+            mlx_stream_get_(s)));
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return 1;
+  }
+  return 0;
 }
 
 namespace {

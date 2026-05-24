@@ -14,3 +14,8 @@ add_test(NAME mlx-c-distributed-unavailable
          COMMAND mlx-c-distributed-unavailable)
 set_tests_properties(mlx-c-distributed-unavailable
                      PROPERTIES SKIP_RETURN_CODE 77)
+
+add_executable(mlx-c-fast-quantized-sdpa fast_quantized_sdpa_test.c)
+target_link_libraries(mlx-c-fast-quantized-sdpa PRIVATE mlxc)
+add_test(NAME mlx-c-fast-quantized-sdpa
+         COMMAND mlx-c-fast-quantized-sdpa)
