@@ -14,6 +14,9 @@ endif()
 option(BUILD_SHARED_LIBS "Build mlx C as a shared library" OFF)
 option(MLX_C_BUILD_EXAMPLES "Build examples for mlx C" ON)
 option(MLX_C_USE_SYSTEM_MLX "Use system MLX" OFF)
+set(MLX_C_MLX_SOURCE_DIR
+    ""
+    CACHE PATH "Path to a local MLX source checkout used for C API parity builds")
 
 # ----------------------------- mlx -----------------------------
 
@@ -31,11 +34,16 @@ set(MLX_BUILD_PYTHON_BINDINGS OFF)
 
 if(MLX_C_USE_SYSTEM_MLX)
   find_package(MLX REQUIRED)
+elseif(MLX_C_MLX_SOURCE_DIR)
+  add_subdirectory(${MLX_C_MLX_SOURCE_DIR} ${CMAKE_BINARY_DIR}/_deps/mlx-build)
+elseif(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../mlx/CMakeLists.txt")
+  add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/../mlx
+                   ${CMAKE_BINARY_DIR}/_deps/mlx-build)
 else()
   FetchContent_Declare(
     mlx
-    GIT_REPOSITORY "https://github.com/ml-explore/mlx.git"
-    GIT_TAG v0.31.2)
+    GIT_REPOSITORY "https://github.com/RNT56/mlx.git"
+    GIT_TAG main)
   FetchContent_MakeAvailable(mlx)
 endif()
 
@@ -73,8 +81,9 @@ set(mlxc-src
 add_library(mlxc ${mlxc-src})
 
 target_link_libraries(mlxc PRIVATE mlx)
-target_include_directories(mlxc
-                           PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}>)
+target_include_directories(
+  mlxc PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}>
+       PRIVATE $<TARGET_PROPERTY:mlx,INCLUDE_DIRECTORIES>)
 set_property(TARGET mlxc PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 # Windows DLL symbol exports
