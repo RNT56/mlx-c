@@ -17,6 +17,18 @@ static void mlx_error_handler_default_(const char* msg, void* data) {
 static std::shared_ptr<void> mlx_error_handler_data_ = nullptr;
 static mlx_error_handler_func mlx_error_handler_ = mlx_error_handler_default_;
 
+extern "C" const char* mlx_status_string(mlx_status status) {
+  switch (status) {
+    case MLX_STATUS_SUCCESS:
+      return "success";
+    case MLX_STATUS_ERROR:
+      return "error";
+    case MLX_STATUS_UNSUPPORTED:
+      return "unsupported";
+  }
+  return "unknown";
+}
+
 extern "C" void mlx_set_error_handler(
     mlx_error_handler_func handler,
     void* data,

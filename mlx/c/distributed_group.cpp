@@ -25,7 +25,7 @@ extern "C" int mlx_distributed_group_free(mlx_distributed_group group) {
   return 0;
 }
 
-extern "C" int
+extern "C" mlx_status
 mlx_distributed_init(mlx_distributed_group* res, bool strict, const char* bk) {
   try {
     if (bk) {
@@ -34,10 +34,13 @@ mlx_distributed_init(mlx_distributed_group* res, bool strict, const char* bk) {
     } else {
       mlx_distributed_group_set_(*res, mlx::core::distributed::init(strict));
     }
-    return 0;
+    return MLX_STATUS_SUCCESS;
+  } catch (mlx::core::distributed::UnsupportedBackendError& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
   } catch (std::exception& e) {
     mlx_error(e.what());
-    return 1;
+    return MLX_STATUS_ERROR;
   }
 }
 
@@ -59,7 +62,37 @@ extern "C" int mlx_distributed_group_size(mlx_distributed_group group) {
   }
 }
 
-extern "C" int mlx_distributed_group_split(
+extern "C" mlx_status mlx_distributed_group_rank_status(
+    int* res,
+    mlx_distributed_group group) {
+  try {
+    *res = mlx_distributed_group_get_(group).rank();
+    return MLX_STATUS_SUCCESS;
+  } catch (mlx::core::distributed::UnsupportedBackendError& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_ERROR;
+  }
+}
+
+extern "C" mlx_status mlx_distributed_group_size_status(
+    int* res,
+    mlx_distributed_group group) {
+  try {
+    *res = mlx_distributed_group_get_(group).size();
+    return MLX_STATUS_SUCCESS;
+  } catch (mlx::core::distributed::UnsupportedBackendError& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_ERROR;
+  }
+}
+
+extern "C" mlx_status mlx_distributed_group_split(
     mlx_distributed_group* res,
     mlx_distributed_group group,
     int color,
@@ -67,10 +100,13 @@ extern "C" int mlx_distributed_group_split(
   try {
     mlx_distributed_group_set_(
         *res, mlx_distributed_group_get_(group).split(color, key));
-    return 0;
+    return MLX_STATUS_SUCCESS;
+  } catch (mlx::core::distributed::UnsupportedBackendError& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
   } catch (std::exception& e) {
     mlx_error(e.what());
-    return 1;
+    return MLX_STATUS_ERROR;
   }
 }
 
@@ -84,5 +120,24 @@ extern "C" bool mlx_distributed_is_available(const char* bk) {
   } catch (std::exception& e) {
     mlx_error(e.what());
     return false;
+  }
+}
+
+extern "C" mlx_status mlx_distributed_is_available_status(
+    bool* res,
+    const char* bk) {
+  try {
+    if (bk) {
+      *res = mlx::core::distributed::is_available(bk);
+    } else {
+      *res = mlx::core::distributed::is_available();
+    }
+    return MLX_STATUS_SUCCESS;
+  } catch (mlx::core::distributed::UnsupportedBackendError& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_ERROR;
   }
 }
