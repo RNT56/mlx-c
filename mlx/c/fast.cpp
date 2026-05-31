@@ -750,6 +750,260 @@ extern "C" int mlx_fast_quantized_scaled_dot_product_attention(
 
 namespace {
 
+mlx::core::fast::TurboQuantAttentionLayoutDescriptor mlx_tq_layout_(
+    mlx_fast_turbo_quant_attention_layout_descriptor layout) {
+  return {
+      layout.layout_version,
+      layout.batch_size,
+      layout.kv_head_count,
+      layout.capacity,
+      layout.logical_length,
+      layout.ring_offset,
+      layout.pinned_prefix_length,
+      layout.head_dimension,
+      layout.groups_per_vector,
+      layout.magnitude_words_per_group,
+      layout.bitset_words_per_group};
+}
+
+mlx::core::fast::TurboQuantPrecisionPolicyDescriptor mlx_tq_precision_(
+    mlx_fast_turbo_quant_precision_policy_descriptor precision) {
+  return {
+      precision.preset,
+      precision.group_size,
+      precision.key_base_bits,
+      precision.key_high_bits,
+      precision.high_precision_numerator,
+      precision.high_precision_denominator,
+      precision.value_bits,
+      precision.key_scales_per_group,
+      precision.value_scales_per_group,
+      precision.value_magnitude_words_per_group,
+      precision.key_seed,
+      precision.value_seed};
+}
+
+mlx::core::fast::TurboQuantAttentionOptions mlx_tq_options_(
+    mlx_fast_turbo_quant_attention_options options) {
+  return {
+      options.scale,
+      options.causal,
+      options.split_k_blocks,
+      options.sparse_v_threshold,
+      options.diagnostics,
+      options.backend_version};
+}
+
+mlx_fast_turbo_quant_segmented_attention_backend mlx_tq_backend_(
+    mlx::core::fast::TurboQuantSegmentedAttentionBackend backend) {
+  switch (backend) {
+    case mlx::core::fast::TurboQuantSegmentedAttentionBackend::ExperimentalJit:
+      return MLX_FAST_TURBO_QUANT_SEGMENTED_ATTENTION_EXPERIMENTAL_JIT;
+    case mlx::core::fast::TurboQuantSegmentedAttentionBackend::NativeFused:
+      return MLX_FAST_TURBO_QUANT_SEGMENTED_ATTENTION_NATIVE_FUSED;
+    case mlx::core::fast::TurboQuantSegmentedAttentionBackend::Unavailable:
+    default:
+      return MLX_FAST_TURBO_QUANT_SEGMENTED_ATTENTION_UNAVAILABLE;
+  }
+}
+
+} // namespace
+
+extern "C" mlx_status mlx_fast_turbo_quant_segmented_attention_get_backend(
+    mlx_fast_turbo_quant_segmented_attention_backend* backend,
+    bool allow_experimental_jit,
+    const mlx_stream s) {
+  try {
+    *backend = mlx_tq_backend_(
+        mlx::core::fast::turbo_quant_segmented_attention_backend(
+            allow_experimental_jit, mlx_stream_get_(s)));
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_ERROR;
+  }
+  return MLX_STATUS_SUCCESS;
+}
+
+extern "C" mlx_status mlx_fast_turbo_quant_segmented_attention_is_available(
+    bool* available,
+    bool allow_experimental_jit,
+    const mlx_stream s) {
+  try {
+    *available = mlx::core::fast::turbo_quant_segmented_attention_is_available(
+        allow_experimental_jit, mlx_stream_get_(s));
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_ERROR;
+  }
+  return MLX_STATUS_SUCCESS;
+}
+
+extern "C" mlx_status mlx_fast_turbo_quant_segmented_attention(
+    mlx_array* res,
+    const mlx_array queries,
+    const mlx_array key_packed,
+    const mlx_array key_signs,
+    const mlx_array key_high_precision_mask,
+    const mlx_array key_residual_signs,
+    const mlx_array key_scales,
+    const mlx_array value_packed,
+    const mlx_array value_signs,
+    const mlx_array value_high_precision_mask,
+    const mlx_array value_residual_signs,
+    const mlx_array value_scales,
+    mlx_fast_turbo_quant_attention_layout_descriptor layout,
+    mlx_fast_turbo_quant_precision_policy_descriptor precision,
+    mlx_fast_turbo_quant_attention_options options,
+    const mlx_stream s) {
+  try {
+    mlx_array_set_(
+        *res,
+        mlx::core::fast::turbo_quant_segmented_attention(
+            mlx_array_get_(queries),
+            mlx_array_get_(key_packed),
+            mlx_array_get_(key_signs),
+            mlx_array_get_(key_high_precision_mask),
+            mlx_array_get_(key_residual_signs),
+            mlx_array_get_(key_scales),
+            mlx_array_get_(value_packed),
+            mlx_array_get_(value_signs),
+            mlx_array_get_(value_high_precision_mask),
+            mlx_array_get_(value_residual_signs),
+            mlx_array_get_(value_scales),
+            mlx_tq_layout_(layout),
+            mlx_tq_precision_(precision),
+            mlx_tq_options_(options),
+            mlx_stream_get_(s)));
+  } catch (const mlx::core::fast::TurboQuantNativeAttentionUnavailable& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_ERROR;
+  }
+  return MLX_STATUS_SUCCESS;
+}
+
+extern "C" mlx_status mlx_fast_turbo_quant_segmented_attention_with_diagnostics(
+    mlx_vector_array* res,
+    const mlx_array queries,
+    const mlx_array key_packed,
+    const mlx_array key_signs,
+    const mlx_array key_high_precision_mask,
+    const mlx_array key_residual_signs,
+    const mlx_array key_scales,
+    const mlx_array value_packed,
+    const mlx_array value_signs,
+    const mlx_array value_high_precision_mask,
+    const mlx_array value_residual_signs,
+    const mlx_array value_scales,
+    mlx_fast_turbo_quant_attention_layout_descriptor layout,
+    mlx_fast_turbo_quant_precision_policy_descriptor precision,
+    mlx_fast_turbo_quant_attention_options options,
+    const mlx_stream s) {
+  try {
+    mlx_vector_array_set_(
+        *res,
+        mlx::core::fast::turbo_quant_segmented_attention_with_diagnostics(
+            mlx_array_get_(queries),
+            mlx_array_get_(key_packed),
+            mlx_array_get_(key_signs),
+            mlx_array_get_(key_high_precision_mask),
+            mlx_array_get_(key_residual_signs),
+            mlx_array_get_(key_scales),
+            mlx_array_get_(value_packed),
+            mlx_array_get_(value_signs),
+            mlx_array_get_(value_high_precision_mask),
+            mlx_array_get_(value_residual_signs),
+            mlx_array_get_(value_scales),
+            mlx_tq_layout_(layout),
+            mlx_tq_precision_(precision),
+            mlx_tq_options_(options),
+            mlx_stream_get_(s)));
+  } catch (const mlx::core::fast::TurboQuantNativeAttentionUnavailable& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_ERROR;
+  }
+  return MLX_STATUS_SUCCESS;
+}
+
+extern "C" int mlx_fast_turbo_quant_scaled_dot_product_attention(
+    mlx_array* res,
+    const mlx_array queries,
+    const mlx_array key_packed,
+    const mlx_array key_signs,
+    const mlx_array key_high_precision_mask,
+    const mlx_array key_residual_signs,
+    const mlx_array key_scales,
+    const mlx_array value_packed,
+    const mlx_array value_signs,
+    const mlx_array value_high_precision_mask,
+    const mlx_array value_residual_signs,
+    const mlx_array value_scales,
+    mlx_fast_turbo_quant_attention_layout_descriptor layout,
+    mlx_fast_turbo_quant_precision_policy_descriptor precision,
+    mlx_fast_turbo_quant_attention_options options,
+    const mlx_stream s) {
+  return mlx_fast_turbo_quant_segmented_attention(
+      res,
+      queries,
+      key_packed,
+      key_signs,
+      key_high_precision_mask,
+      key_residual_signs,
+      key_scales,
+      value_packed,
+      value_signs,
+      value_high_precision_mask,
+      value_residual_signs,
+      value_scales,
+      layout,
+      precision,
+      options,
+      s);
+}
+
+extern "C" int mlx_fast_turbo_quant_scaled_dot_product_attention_with_diagnostics(
+    mlx_vector_array* res,
+    const mlx_array queries,
+    const mlx_array key_packed,
+    const mlx_array key_signs,
+    const mlx_array key_high_precision_mask,
+    const mlx_array key_residual_signs,
+    const mlx_array key_scales,
+    const mlx_array value_packed,
+    const mlx_array value_signs,
+    const mlx_array value_high_precision_mask,
+    const mlx_array value_residual_signs,
+    const mlx_array value_scales,
+    mlx_fast_turbo_quant_attention_layout_descriptor layout,
+    mlx_fast_turbo_quant_precision_policy_descriptor precision,
+    mlx_fast_turbo_quant_attention_options options,
+    const mlx_stream s) {
+  return mlx_fast_turbo_quant_segmented_attention_with_diagnostics(
+      res,
+      queries,
+      key_packed,
+      key_signs,
+      key_high_precision_mask,
+      key_residual_signs,
+      key_scales,
+      value_packed,
+      value_signs,
+      value_high_precision_mask,
+      value_residual_signs,
+      value_scales,
+      layout,
+      precision,
+      options,
+      s);
+}
+
+namespace {
+
 using Clock = std::chrono::steady_clock;
 
 struct SSDMetricsState {

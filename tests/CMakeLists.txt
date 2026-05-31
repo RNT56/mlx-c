@@ -19,3 +19,8 @@ add_executable(mlx-c-fast-quantized-sdpa fast_quantized_sdpa_test.c)
 target_link_libraries(mlx-c-fast-quantized-sdpa PRIVATE mlxc)
 add_test(NAME mlx-c-fast-quantized-sdpa
          COMMAND mlx-c-fast-quantized-sdpa)
+
+add_executable(mlx-c-fast-turbo-quant-sdpa fast_turbo_quant_sdpa_test.c)
+target_link_libraries(mlx-c-fast-turbo-quant-sdpa PRIVATE mlxc)
+add_test(NAME mlx-c-fast-turbo-quant-sdpa
+         COMMAND mlx-c-fast-turbo-quant-sdpa)
