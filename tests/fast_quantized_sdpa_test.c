@@ -4,6 +4,11 @@
 
 #include "mlx/c/mlx.h"
 
+static void ignore_mlx_error(const char* msg, void* data) {
+  (void)msg;
+  (void)data;
+}
+
 static int get_quantized_component(
     mlx_array* out,
     const mlx_vector_array quantized,
@@ -104,6 +109,113 @@ cleanup_arrays:
   return status;
 }
 
+static int run_mixed_sparse_options_rejected_on_cpu(mlx_stream stream) {
+  mlx_fast_mixed_quantized_attention_options options = {
+      .scale = 1.0f,
+      .causal = true,
+      .key_group_size = 64,
+      .key_bits = 8,
+      .value_group_size = 32,
+      .value_bits = 4,
+      .sparse_v_threshold = 1e-6f,
+      .reserved = {0, 0, 0, 0},
+  };
+  mlx_array output = mlx_array_new();
+  mlx_array diagnostics = mlx_array_new();
+  mlx_set_error_handler(ignore_mlx_error, NULL, NULL);
+  mlx_status status =
+      mlx_fast_mixed_quantized_scaled_dot_product_attention_with_options_and_diagnostics(
+          &output,
+          &diagnostics,
+          (mlx_array){NULL},
+          (mlx_array){NULL},
+          (mlx_array){NULL},
+          (mlx_array){NULL},
+          (mlx_array){NULL},
+          (mlx_array){NULL},
+          (mlx_array){NULL},
+          (mlx_array){NULL},
+          (mlx_array){NULL},
+          options,
+          stream);
+  mlx_set_error_handler(NULL, NULL, NULL);
+  mlx_array_free(diagnostics);
+  mlx_array_free(output);
+  return status == MLX_STATUS_ERROR ? 0 : 30;
+}
+
+static int run_turbo_quant_sparse_option_fields_round_trip(void) {
+  mlx_fast_turbo_quant_attention_options topk = {
+      .scale = 1.0f,
+      .causal = true,
+      .split_k_blocks = 0,
+      .sparse_v_threshold = 0.0f,
+      .sparse_v_selection_mode = 2,
+      .sparse_v_top_k = 128,
+      .sparse_v_cumulative_mass = 0.0f,
+      .sparse_v_max_top_k = 0,
+      .diagnostics = true,
+      .backend_version = 3,
+  };
+  mlx_fast_turbo_quant_attention_options mass = {
+      .scale = 1.0f,
+      .causal = true,
+      .split_k_blocks = 0,
+      .sparse_v_threshold = 0.0f,
+      .sparse_v_selection_mode = 3,
+      .sparse_v_top_k = 0,
+      .sparse_v_cumulative_mass = 0.995f,
+      .sparse_v_max_top_k = 0,
+      .diagnostics = true,
+      .backend_version = 3,
+  };
+  mlx_fast_turbo_quant_attention_options hybrid = {
+      .scale = 1.0f,
+      .causal = true,
+      .split_k_blocks = 0,
+      .sparse_v_threshold = 0.0f,
+      .sparse_v_selection_mode = 4,
+      .sparse_v_top_k = 0,
+      .sparse_v_cumulative_mass = 0.995f,
+      .sparse_v_max_top_k = 512,
+      .diagnostics = true,
+      .backend_version = 3,
+  };
+  mlx_fast_turbo_quant_attention_options candidate = {
+      .scale = 1.0f,
+      .causal = true,
+      .split_k_blocks = 0,
+      .sparse_v_threshold = 0.0f,
+      .sparse_v_selection_mode = 7,
+      .sparse_v_top_k = 1024,
+      .sparse_v_cumulative_mass = 0.0f,
+      .sparse_v_max_top_k = 0,
+      .sparse_v_recent_tokens = 1024,
+      .sparse_v_candidate_pages = 8,
+      .diagnostics = true,
+      .backend_version = 3,
+  };
+  if (topk.sparse_v_selection_mode != 2 || topk.sparse_v_top_k != 128) {
+    return 31;
+  }
+  if (mass.sparse_v_selection_mode != 3 ||
+      fabsf(mass.sparse_v_cumulative_mass - 0.995f) > 1e-6f) {
+    return 32;
+  }
+  if (hybrid.sparse_v_selection_mode != 4 ||
+      hybrid.sparse_v_max_top_k != 512 ||
+      fabsf(hybrid.sparse_v_cumulative_mass - 0.995f) > 1e-6f) {
+    return 33;
+  }
+  if (candidate.sparse_v_selection_mode != 7 ||
+      candidate.sparse_v_top_k != 1024 ||
+      candidate.sparse_v_recent_tokens != 1024 ||
+      candidate.sparse_v_candidate_pages != 8) {
+    return 34;
+  }
+  return 0;
+}
+
 int main(void) {
   mlx_stream stream = mlx_default_cpu_stream_new();
   mlx_optional_int group_size = {.value = 64, .has_value = true};
@@ -181,6 +293,14 @@ int main(void) {
   int gqa64 = run_affine_int4_decode_gqa4_head256(stream, 64);
   if (gqa64 != 0) {
     return gqa64;
+  }
+  int sparse_options_status = run_mixed_sparse_options_rejected_on_cpu(stream);
+  if (sparse_options_status != 0) {
+    return sparse_options_status;
+  }
+  int sparse_tq_options_status = run_turbo_quant_sparse_option_fields_round_trip();
+  if (sparse_tq_options_status != 0) {
+    return sparse_tq_options_status;
   }
 
   mlx_array_free(output);
