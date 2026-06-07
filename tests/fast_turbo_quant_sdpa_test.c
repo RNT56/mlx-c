@@ -39,6 +39,14 @@ int main(void) {
   float value_scales_data[2] = {1.0f, 0.0f};
   mlx_array value_scales =
       mlx_array_new_data(value_scales_data, value_scales_shape, 5, MLX_FLOAT32);
+  int key_page_summary_shape[] = {1, 1, 1, 1};
+  float key_page_summary_data[1] = {1.0f};
+  mlx_array key_page_summary = mlx_array_new_data(
+      key_page_summary_data, key_page_summary_shape, 4, MLX_FLOAT32);
+  int key_candidate_sketch_shape[] = {1, 1, 1, 64};
+  float key_candidate_sketch_data[64] = {0.0f};
+  mlx_array key_candidate_sketch = mlx_array_new_data(
+      key_candidate_sketch_data, key_candidate_sketch_shape, 4, MLX_FLOAT32);
 
   mlx_fast_turbo_quant_attention_layout_descriptor layout = {
       .layout_version = 6,
@@ -108,8 +116,58 @@ int main(void) {
     return 4;
   }
 
+  options.diagnostics = false;
+  options.sparse_v_selection_mode = 6;
+  options.sparse_v_top_k = 1;
+  status = mlx_fast_turbo_quant_segmented_attention_with_page_summaries(
+      &output, queries, key_packed, key_signs, key_high_mask, compact,
+      key_scales, value_packed, compact, compact, compact, value_scales,
+      key_page_summary, layout, precision, options, stream);
+  if (status != MLX_STATUS_UNSUPPORTED) {
+    return 5;
+  }
+
+  mlx_vector_array_free(outputs);
+  outputs = mlx_vector_array_new();
+  options.diagnostics = true;
+  status =
+      mlx_fast_turbo_quant_segmented_attention_with_page_summaries_and_diagnostics(
+          &outputs, queries, key_packed, key_signs, key_high_mask, compact,
+          key_scales, value_packed, compact, compact, compact, value_scales,
+          key_page_summary, layout, precision, options, stream);
+  if (status != MLX_STATUS_UNSUPPORTED) {
+    return 6;
+  }
+
+  mlx_vector_array_free(outputs);
+  outputs = mlx_vector_array_new();
+  options.diagnostics = false;
+  options.sparse_v_selection_mode = 7;
+  options.sparse_v_top_k = 1;
+  options.sparse_v_recent_tokens = 1;
+  options.sparse_v_candidate_pages = 1;
+  status = mlx_fast_turbo_quant_segmented_attention_with_candidate_sketches(
+      &output, queries, key_packed, key_signs, key_high_mask, compact,
+      key_scales, value_packed, compact, compact, compact, value_scales,
+      key_candidate_sketch, layout, precision, options, stream);
+  if (status != MLX_STATUS_UNSUPPORTED) {
+    return 7;
+  }
+
+  options.diagnostics = true;
+  status =
+      mlx_fast_turbo_quant_segmented_attention_with_candidate_sketches_and_diagnostics(
+          &outputs, queries, key_packed, key_signs, key_high_mask, compact,
+          key_scales, value_packed, compact, compact, compact, value_scales,
+          key_candidate_sketch, layout, precision, options, stream);
+  if (status != MLX_STATUS_UNSUPPORTED) {
+    return 8;
+  }
+
   mlx_vector_array_free(outputs);
   mlx_array_free(output);
+  mlx_array_free(key_candidate_sketch);
+  mlx_array_free(key_page_summary);
   mlx_array_free(value_scales);
   mlx_array_free(key_scales);
   mlx_array_free(compact);

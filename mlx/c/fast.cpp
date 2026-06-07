@@ -11,6 +11,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <fstream>
 #include <mutex>
@@ -799,6 +800,175 @@ extern "C" int mlx_fast_mixed_quantized_scaled_dot_product_attention(
 
 namespace {
 
+void mlx_mixed_quantized_scaled_dot_product_attention_(
+    mlx_array* res,
+    mlx_array* diagnostics,
+    const mlx_array queries,
+    const mlx_array keys,
+    const mlx_array key_scales,
+    const mlx_array key_biases,
+    const mlx_array values,
+    const mlx_array value_scales,
+    const mlx_array value_biases,
+    const mlx_array mask,
+    const mlx_array sinks,
+    mlx_fast_mixed_quantized_attention_options options,
+    const mlx_stream s) {
+  if (!std::isfinite(options.sparse_v_threshold) ||
+      options.sparse_v_threshold < 0.0f) {
+    throw std::invalid_argument(
+        "[mixed_quantized_scaled_dot_product_attention_with_options] "
+        "sparse_v_threshold must be finite and non-negative.");
+  }
+
+  auto query_array = mlx_array_get_(queries);
+  auto key_array = mlx_array_get_(keys);
+  auto key_scale_array = mlx_array_get_(key_scales);
+  auto key_bias_array =
+      key_biases.ctx ? std::make_optional(mlx_array_get_(key_biases))
+                     : std::nullopt;
+  auto value_array = mlx_array_get_(values);
+  auto value_scale_array = mlx_array_get_(value_scales);
+  auto value_bias_array =
+      value_biases.ctx ? std::make_optional(mlx_array_get_(value_biases))
+                       : std::nullopt;
+  auto mask_array =
+      mask.ctx ? std::make_optional(mlx_array_get_(mask)) : std::nullopt;
+  auto sinks_array =
+      sinks.ctx ? std::make_optional(mlx_array_get_(sinks)) : std::nullopt;
+  auto stream = mlx_stream_get_(s);
+
+  if (options.sparse_v_threshold > 0.0f || diagnostics) {
+    auto outputs =
+        mlx::core::fast::
+            mixed_quantized_scaled_dot_product_attention_with_diagnostics(
+                query_array,
+                key_array,
+                key_scale_array,
+                key_bias_array,
+                value_array,
+                value_scale_array,
+                value_bias_array,
+                options.scale,
+                mask_array,
+                sinks_array,
+                options.key_group_size,
+                options.key_bits,
+                options.value_group_size,
+                options.value_bits,
+                options.causal,
+                options.sparse_v_threshold,
+                stream);
+    mlx_array_set_(*res, outputs[0]);
+    if (diagnostics) {
+      mlx_array_set_(*diagnostics, outputs[1]);
+    }
+  } else {
+    mlx_array_set_(
+        *res,
+        mlx::core::fast::mixed_quantized_scaled_dot_product_attention(
+            query_array,
+            key_array,
+            key_scale_array,
+            key_bias_array,
+            value_array,
+            value_scale_array,
+            value_bias_array,
+            options.scale,
+            mask_array,
+            sinks_array,
+            options.key_group_size,
+            options.key_bits,
+            options.value_group_size,
+            options.value_bits,
+            options.causal,
+            stream));
+  }
+}
+
+} // namespace
+
+extern "C" mlx_status
+mlx_fast_mixed_quantized_scaled_dot_product_attention_with_options(
+    mlx_array* res,
+    const mlx_array queries,
+    const mlx_array keys,
+    const mlx_array key_scales,
+    const mlx_array key_biases,
+    const mlx_array values,
+    const mlx_array value_scales,
+    const mlx_array value_biases,
+    const mlx_array mask /* may be null */,
+    const mlx_array sinks /* may be null */,
+    mlx_fast_mixed_quantized_attention_options options,
+    const mlx_stream s) {
+  try {
+    mlx_mixed_quantized_scaled_dot_product_attention_(
+        res,
+        nullptr,
+        queries,
+        keys,
+        key_scales,
+        key_biases,
+        values,
+        value_scales,
+        value_biases,
+        mask,
+        sinks,
+        options,
+        s);
+  } catch (std::domain_error& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_ERROR;
+  }
+  return MLX_STATUS_SUCCESS;
+}
+
+extern "C" mlx_status
+mlx_fast_mixed_quantized_scaled_dot_product_attention_with_options_and_diagnostics(
+    mlx_array* res,
+    mlx_array* diagnostics,
+    const mlx_array queries,
+    const mlx_array keys,
+    const mlx_array key_scales,
+    const mlx_array key_biases,
+    const mlx_array values,
+    const mlx_array value_scales,
+    const mlx_array value_biases,
+    const mlx_array mask /* may be null */,
+    const mlx_array sinks /* may be null */,
+    mlx_fast_mixed_quantized_attention_options options,
+    const mlx_stream s) {
+  try {
+    mlx_mixed_quantized_scaled_dot_product_attention_(
+        res,
+        diagnostics,
+        queries,
+        keys,
+        key_scales,
+        key_biases,
+        values,
+        value_scales,
+        value_biases,
+        mask,
+        sinks,
+        options,
+        s);
+  } catch (std::domain_error& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_ERROR;
+  }
+  return MLX_STATUS_SUCCESS;
+}
+
+namespace {
+
 mlx::core::fast::TurboQuantAttentionLayoutDescriptor mlx_tq_layout_(
     mlx_fast_turbo_quant_attention_layout_descriptor layout) {
   return {
@@ -839,6 +1009,12 @@ mlx::core::fast::TurboQuantAttentionOptions mlx_tq_options_(
       options.causal,
       options.split_k_blocks,
       options.sparse_v_threshold,
+      options.sparse_v_selection_mode,
+      options.sparse_v_top_k,
+      options.sparse_v_cumulative_mass,
+      options.sparse_v_max_top_k,
+      options.sparse_v_recent_tokens,
+      options.sparse_v_candidate_pages,
       options.diagnostics,
       options.backend_version};
 }
@@ -969,6 +1145,204 @@ extern "C" mlx_status mlx_fast_turbo_quant_segmented_attention_with_diagnostics(
             mlx_tq_precision_(precision),
             mlx_tq_options_(options),
             mlx_stream_get_(s)));
+  } catch (const mlx::core::fast::TurboQuantNativeAttentionUnavailable& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_ERROR;
+  }
+  return MLX_STATUS_SUCCESS;
+}
+
+extern "C" mlx_status
+mlx_fast_turbo_quant_segmented_attention_with_page_summaries(
+    mlx_array* res,
+    const mlx_array queries,
+    const mlx_array key_packed,
+    const mlx_array key_signs,
+    const mlx_array key_high_precision_mask,
+    const mlx_array key_residual_signs,
+    const mlx_array key_scales,
+    const mlx_array value_packed,
+    const mlx_array value_signs,
+    const mlx_array value_high_precision_mask,
+    const mlx_array value_residual_signs,
+    const mlx_array value_scales,
+    const mlx_array key_page_summary,
+    mlx_fast_turbo_quant_attention_layout_descriptor layout,
+    mlx_fast_turbo_quant_precision_policy_descriptor precision,
+    mlx_fast_turbo_quant_attention_options options,
+    const mlx_stream s) {
+  try {
+    mlx_array_set_(
+        *res,
+        mlx::core::fast::turbo_quant_segmented_attention_with_page_summaries(
+            mlx_array_get_(queries),
+            mlx_array_get_(key_packed),
+            mlx_array_get_(key_signs),
+            mlx_array_get_(key_high_precision_mask),
+            mlx_array_get_(key_residual_signs),
+            mlx_array_get_(key_scales),
+            mlx_array_get_(value_packed),
+            mlx_array_get_(value_signs),
+            mlx_array_get_(value_high_precision_mask),
+            mlx_array_get_(value_residual_signs),
+            mlx_array_get_(value_scales),
+            mlx_array_get_(key_page_summary),
+            mlx_tq_layout_(layout),
+            mlx_tq_precision_(precision),
+            mlx_tq_options_(options),
+            mlx_stream_get_(s)));
+  } catch (const mlx::core::fast::TurboQuantNativeAttentionUnavailable& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_ERROR;
+  }
+  return MLX_STATUS_SUCCESS;
+}
+
+extern "C" mlx_status
+mlx_fast_turbo_quant_segmented_attention_with_page_summaries_and_diagnostics(
+    mlx_vector_array* res,
+    const mlx_array queries,
+    const mlx_array key_packed,
+    const mlx_array key_signs,
+    const mlx_array key_high_precision_mask,
+    const mlx_array key_residual_signs,
+    const mlx_array key_scales,
+    const mlx_array value_packed,
+    const mlx_array value_signs,
+    const mlx_array value_high_precision_mask,
+    const mlx_array value_residual_signs,
+    const mlx_array value_scales,
+    const mlx_array key_page_summary,
+    mlx_fast_turbo_quant_attention_layout_descriptor layout,
+    mlx_fast_turbo_quant_precision_policy_descriptor precision,
+    mlx_fast_turbo_quant_attention_options options,
+    const mlx_stream s) {
+  try {
+    mlx_vector_array_set_(
+        *res,
+        mlx::core::fast::
+            turbo_quant_segmented_attention_with_page_summaries_and_diagnostics(
+                mlx_array_get_(queries),
+                mlx_array_get_(key_packed),
+                mlx_array_get_(key_signs),
+                mlx_array_get_(key_high_precision_mask),
+                mlx_array_get_(key_residual_signs),
+                mlx_array_get_(key_scales),
+                mlx_array_get_(value_packed),
+                mlx_array_get_(value_signs),
+                mlx_array_get_(value_high_precision_mask),
+                mlx_array_get_(value_residual_signs),
+                mlx_array_get_(value_scales),
+                mlx_array_get_(key_page_summary),
+                mlx_tq_layout_(layout),
+                mlx_tq_precision_(precision),
+                mlx_tq_options_(options),
+                mlx_stream_get_(s)));
+  } catch (const mlx::core::fast::TurboQuantNativeAttentionUnavailable& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_ERROR;
+  }
+  return MLX_STATUS_SUCCESS;
+}
+
+extern "C" mlx_status
+mlx_fast_turbo_quant_segmented_attention_with_candidate_sketches(
+    mlx_array* res,
+    const mlx_array queries,
+    const mlx_array key_packed,
+    const mlx_array key_signs,
+    const mlx_array key_high_precision_mask,
+    const mlx_array key_residual_signs,
+    const mlx_array key_scales,
+    const mlx_array value_packed,
+    const mlx_array value_signs,
+    const mlx_array value_high_precision_mask,
+    const mlx_array value_residual_signs,
+    const mlx_array value_scales,
+    const mlx_array key_candidate_sketch,
+    mlx_fast_turbo_quant_attention_layout_descriptor layout,
+    mlx_fast_turbo_quant_precision_policy_descriptor precision,
+    mlx_fast_turbo_quant_attention_options options,
+    const mlx_stream s) {
+  try {
+    mlx_array_set_(
+        *res,
+        mlx::core::fast::turbo_quant_segmented_attention_with_candidate_sketches(
+            mlx_array_get_(queries),
+            mlx_array_get_(key_packed),
+            mlx_array_get_(key_signs),
+            mlx_array_get_(key_high_precision_mask),
+            mlx_array_get_(key_residual_signs),
+            mlx_array_get_(key_scales),
+            mlx_array_get_(value_packed),
+            mlx_array_get_(value_signs),
+            mlx_array_get_(value_high_precision_mask),
+            mlx_array_get_(value_residual_signs),
+            mlx_array_get_(value_scales),
+            mlx_array_get_(key_candidate_sketch),
+            mlx_tq_layout_(layout),
+            mlx_tq_precision_(precision),
+            mlx_tq_options_(options),
+            mlx_stream_get_(s)));
+  } catch (const mlx::core::fast::TurboQuantNativeAttentionUnavailable& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_UNSUPPORTED;
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_ERROR;
+  }
+  return MLX_STATUS_SUCCESS;
+}
+
+extern "C" mlx_status
+mlx_fast_turbo_quant_segmented_attention_with_candidate_sketches_and_diagnostics(
+    mlx_vector_array* res,
+    const mlx_array queries,
+    const mlx_array key_packed,
+    const mlx_array key_signs,
+    const mlx_array key_high_precision_mask,
+    const mlx_array key_residual_signs,
+    const mlx_array key_scales,
+    const mlx_array value_packed,
+    const mlx_array value_signs,
+    const mlx_array value_high_precision_mask,
+    const mlx_array value_residual_signs,
+    const mlx_array value_scales,
+    const mlx_array key_candidate_sketch,
+    mlx_fast_turbo_quant_attention_layout_descriptor layout,
+    mlx_fast_turbo_quant_precision_policy_descriptor precision,
+    mlx_fast_turbo_quant_attention_options options,
+    const mlx_stream s) {
+  try {
+    mlx_vector_array_set_(
+        *res,
+        mlx::core::fast::
+            turbo_quant_segmented_attention_with_candidate_sketches_and_diagnostics(
+                mlx_array_get_(queries),
+                mlx_array_get_(key_packed),
+                mlx_array_get_(key_signs),
+                mlx_array_get_(key_high_precision_mask),
+                mlx_array_get_(key_residual_signs),
+                mlx_array_get_(key_scales),
+                mlx_array_get_(value_packed),
+                mlx_array_get_(value_signs),
+                mlx_array_get_(value_high_precision_mask),
+                mlx_array_get_(value_residual_signs),
+                mlx_array_get_(value_scales),
+                mlx_array_get_(key_candidate_sketch),
+                mlx_tq_layout_(layout),
+                mlx_tq_precision_(precision),
+                mlx_tq_options_(options),
+                mlx_stream_get_(s)));
   } catch (const mlx::core::fast::TurboQuantNativeAttentionUnavailable& e) {
     mlx_error(e.what());
     return MLX_STATUS_UNSUPPORTED;
