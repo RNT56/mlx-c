@@ -1032,6 +1032,20 @@ mlx_fast_turbo_quant_segmented_attention_backend mlx_tq_backend_(
   }
 }
 
+mlx::core::fast::TurboQuantSegmentedAttentionCodec mlx_tq_codec_(
+    mlx_fast_turbo_quant_segmented_attention_codec codec) {
+  switch (codec) {
+    case MLX_FAST_TURBO_QUANT_SEGMENTED_ATTENTION_CODEC_POLAR_WHT:
+      return mlx::core::fast::TurboQuantSegmentedAttentionCodec::PolarWHT;
+    case MLX_FAST_TURBO_QUANT_SEGMENTED_ATTENTION_CODEC_HYBRID_K8_POLAR_WHT_VALUE:
+      return mlx::core::fast::TurboQuantSegmentedAttentionCodec::
+          HybridK8PolarWHTValue;
+    case MLX_FAST_TURBO_QUANT_SEGMENTED_ATTENTION_CODEC_POLAR_QJL:
+    default:
+      return mlx::core::fast::TurboQuantSegmentedAttentionCodec::PolarQJL;
+  }
+}
+
 } // namespace
 
 extern "C" mlx_status mlx_fast_turbo_quant_segmented_attention_get_backend(
@@ -1056,6 +1070,40 @@ extern "C" mlx_status mlx_fast_turbo_quant_segmented_attention_is_available(
   try {
     *available = mlx::core::fast::turbo_quant_segmented_attention_is_available(
         allow_experimental_jit, mlx_stream_get_(s));
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_ERROR;
+  }
+  return MLX_STATUS_SUCCESS;
+}
+
+extern "C" mlx_status
+mlx_fast_turbo_quant_segmented_attention_get_backend_for_codec(
+    mlx_fast_turbo_quant_segmented_attention_backend* backend,
+    mlx_fast_turbo_quant_segmented_attention_codec codec,
+    bool allow_experimental_jit,
+    const mlx_stream s) {
+  try {
+    *backend = mlx_tq_backend_(
+        mlx::core::fast::turbo_quant_segmented_attention_backend_for_codec(
+            mlx_tq_codec_(codec), allow_experimental_jit, mlx_stream_get_(s)));
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return MLX_STATUS_ERROR;
+  }
+  return MLX_STATUS_SUCCESS;
+}
+
+extern "C" mlx_status
+mlx_fast_turbo_quant_segmented_attention_is_available_for_codec(
+    bool* available,
+    mlx_fast_turbo_quant_segmented_attention_codec codec,
+    bool allow_experimental_jit,
+    const mlx_stream s) {
+  try {
+    *available =
+        mlx::core::fast::turbo_quant_segmented_attention_is_available_for_codec(
+            mlx_tq_codec_(codec), allow_experimental_jit, mlx_stream_get_(s));
   } catch (std::exception& e) {
     mlx_error(e.what());
     return MLX_STATUS_ERROR;

@@ -336,6 +336,12 @@ typedef enum mlx_fast_turbo_quant_segmented_attention_backend_ {
   MLX_FAST_TURBO_QUANT_SEGMENTED_ATTENTION_NATIVE_FUSED = 2,
 } mlx_fast_turbo_quant_segmented_attention_backend;
 
+typedef enum mlx_fast_turbo_quant_segmented_attention_codec_ {
+  MLX_FAST_TURBO_QUANT_SEGMENTED_ATTENTION_CODEC_POLAR_QJL = 0,
+  MLX_FAST_TURBO_QUANT_SEGMENTED_ATTENTION_CODEC_POLAR_WHT = 1,
+  MLX_FAST_TURBO_QUANT_SEGMENTED_ATTENTION_CODEC_HYBRID_K8_POLAR_WHT_VALUE = 2,
+} mlx_fast_turbo_quant_segmented_attention_codec;
+
 mlx_status mlx_fast_turbo_quant_segmented_attention_get_backend(
     mlx_fast_turbo_quant_segmented_attention_backend* backend,
     bool allow_experimental_jit,
@@ -343,6 +349,18 @@ mlx_status mlx_fast_turbo_quant_segmented_attention_get_backend(
 
 mlx_status mlx_fast_turbo_quant_segmented_attention_is_available(
     bool* available,
+    bool allow_experimental_jit,
+    const mlx_stream s);
+
+mlx_status mlx_fast_turbo_quant_segmented_attention_get_backend_for_codec(
+    mlx_fast_turbo_quant_segmented_attention_backend* backend,
+    mlx_fast_turbo_quant_segmented_attention_codec codec,
+    bool allow_experimental_jit,
+    const mlx_stream s);
+
+mlx_status mlx_fast_turbo_quant_segmented_attention_is_available_for_codec(
+    bool* available,
+    mlx_fast_turbo_quant_segmented_attention_codec codec,
     bool allow_experimental_jit,
     const mlx_stream s);
 

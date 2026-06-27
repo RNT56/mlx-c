@@ -97,6 +97,41 @@ int main(void) {
     return 2;
   }
 
+  backend = MLX_FAST_TURBO_QUANT_SEGMENTED_ATTENTION_NATIVE_FUSED;
+  probe_status =
+      mlx_fast_turbo_quant_segmented_attention_get_backend_for_codec(
+          &backend,
+          MLX_FAST_TURBO_QUANT_SEGMENTED_ATTENTION_CODEC_POLAR_QJL,
+          false,
+          stream);
+  if (probe_status != MLX_STATUS_SUCCESS ||
+      backend != MLX_FAST_TURBO_QUANT_SEGMENTED_ATTENTION_UNAVAILABLE) {
+    return 21;
+  }
+
+  backend = MLX_FAST_TURBO_QUANT_SEGMENTED_ATTENTION_NATIVE_FUSED;
+  probe_status =
+      mlx_fast_turbo_quant_segmented_attention_get_backend_for_codec(
+          &backend,
+          MLX_FAST_TURBO_QUANT_SEGMENTED_ATTENTION_CODEC_POLAR_WHT,
+          true,
+          stream);
+  if (probe_status != MLX_STATUS_SUCCESS ||
+      backend != MLX_FAST_TURBO_QUANT_SEGMENTED_ATTENTION_UNAVAILABLE) {
+    return 22;
+  }
+
+  available = true;
+  probe_status =
+      mlx_fast_turbo_quant_segmented_attention_is_available_for_codec(
+          &available,
+          MLX_FAST_TURBO_QUANT_SEGMENTED_ATTENTION_CODEC_HYBRID_K8_POLAR_WHT_VALUE,
+          true,
+          stream);
+  if (probe_status != MLX_STATUS_SUCCESS || available) {
+    return 23;
+  }
+
   mlx_array output = mlx_array_new();
   mlx_status status = mlx_fast_turbo_quant_segmented_attention(
       &output, queries, key_packed, key_signs, key_high_mask, compact,
