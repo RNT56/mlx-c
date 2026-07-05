@@ -798,6 +798,49 @@ extern "C" int mlx_fast_mixed_quantized_scaled_dot_product_attention(
   return 0;
 }
 
+extern "C" int mlx_fast_quantize_append_kv(
+    mlx_vector_array* res,
+    const mlx_array k_new,
+    const mlx_array v_new,
+    const mlx_array k_codes,
+    const mlx_array k_scales,
+    const mlx_array k_biases,
+    const mlx_array v_codes,
+    const mlx_array v_scales,
+    const mlx_array v_biases,
+    int seq_offset,
+    int steps,
+    int key_group_size,
+    int key_bits,
+    int value_group_size,
+    int value_bits,
+    const mlx_stream s) {
+  try {
+    mlx_vector_array_set_(
+        *res,
+        mlx::core::fast::quantize_append_kv(
+            mlx_array_get_(k_new),
+            mlx_array_get_(v_new),
+            mlx_array_get_(k_codes),
+            mlx_array_get_(k_scales),
+            mlx_array_get_(k_biases),
+            mlx_array_get_(v_codes),
+            mlx_array_get_(v_scales),
+            mlx_array_get_(v_biases),
+            seq_offset,
+            steps,
+            key_group_size,
+            key_bits,
+            value_group_size,
+            value_bits,
+            mlx_stream_get_(s)));
+  } catch (std::exception& e) {
+    mlx_error(e.what());
+    return 1;
+  }
+  return 0;
+}
+
 namespace {
 
 void mlx_mixed_quantized_scaled_dot_product_attention_(
